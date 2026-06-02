@@ -1,0 +1,1575 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>xPath 論文精讀 — 異質圖神經網路的細粒度可解釋性</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true
+  },
+  svg: { fontCache: 'global' },
+  options: { skipHtmlTags: ['script','noscript','style','textarea','pre','code'] }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+
+<style>
+  :root {
+    --bg: #fdfcfa;
+    --bg-soft: #faf8f4;
+    --ink: #1a1a1a;
+    --ink-muted: #5a5a5a;
+    --ink-faint: #8a8a8a;
+    --rule: #d8d3cd;
+    --rule-faint: #ece8e1;
+
+    /* low-saturation accents */
+    --purple: #6f5d8a;
+    --purple-soft: #a899c1;
+    --purple-pale: #f4f0f8;
+    --purple-pale-border: #ddd2e8;
+
+    --pink: #a87285;
+    --pink-soft: #c6a3b1;
+    --pink-pale: #faf2f5;
+    --pink-pale-border: #ead5dd;
+
+    --blue: #5d7a9e;
+    --blue-soft: #98aec5;
+    --blue-pale: #f0f4f9;
+    --blue-pale-border: #cfdae8;
+
+    --serif: 'Noto Serif TC', 'Source Han Serif TC', 'STSong', 'SimSun', 'PMingLiU', serif;
+    --display: 'Cormorant Garamond', 'Noto Serif TC', serif;
+    --mono: 'JetBrains Mono', 'Source Code Pro', monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-weight: 400;
+    line-height: 1.85;
+    font-size: 17px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* ===== Layout ===== */
+  .layout {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 760px);
+    gap: 80px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 80px 48px 120px;
+  }
+
+  @media (max-width: 1024px) {
+    .layout { grid-template-columns: 1fr; gap: 0; padding: 56px 32px 80px; }
+    .toc { position: static !important; max-height: none !important; margin-bottom: 56px; }
+  }
+
+  /* ===== Sidebar TOC ===== */
+  .toc {
+    position: sticky;
+    top: 48px;
+    align-self: start;
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
+    padding-right: 16px;
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--ink-muted);
+  }
+  .toc::-webkit-scrollbar { width: 4px; }
+  .toc::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 2px; }
+
+  .toc .toc-label {
+    font-family: var(--display);
+    font-style: italic;
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--purple);
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--purple-pale-border);
+  }
+  .toc ol { list-style: none; padding: 0; margin: 0; counter-reset: toc; }
+  .toc ol > li { counter-increment: toc; margin-bottom: 14px; }
+  .toc ol > li > a {
+    display: block; color: var(--ink); text-decoration: none;
+    font-weight: 500; transition: color 0.2s; position: relative; padding-left: 28px;
+  }
+  .toc ol > li > a::before {
+    content: counter(toc, decimal-leading-zero);
+    position: absolute; left: 0; top: 0;
+    font-family: var(--display); font-style: italic; font-size: 12px;
+    color: var(--purple-soft); letter-spacing: 0.05em;
+  }
+  .toc ol > li > a:hover { color: var(--purple); }
+  .toc ol ol { margin-top: 6px; padding-left: 28px; counter-reset: subtoc; }
+  .toc ol ol li { counter-increment: subtoc; margin-bottom: 4px; font-size: 13px; }
+  .toc ol ol li a { color: var(--ink-muted); text-decoration: none; transition: color 0.2s; }
+  .toc ol ol li a:hover { color: var(--purple); }
+
+  /* ===== Main content ===== */
+  main { min-width: 0; }
+
+  /* ===== Header ===== */
+  header.title-block { margin-bottom: 80px; padding-bottom: 48px; border-bottom: 1px solid var(--rule); }
+  .eyebrow {
+    font-family: var(--display); font-style: italic; font-size: 14px;
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--purple); margin-bottom: 28px;
+  }
+  h1.doc-title {
+    font-family: var(--serif); font-weight: 600; font-size: 38px; line-height: 1.32;
+    letter-spacing: 0.02em; margin: 0 0 16px; color: var(--ink);
+  }
+  .doc-subtitle {
+    font-family: var(--display); font-style: italic; font-weight: 400; font-size: 21px;
+    line-height: 1.5; color: var(--ink-muted); margin: 0 0 36px;
+  }
+  .doc-meta { display: flex; flex-wrap: wrap; gap: 32px; font-size: 14px; color: var(--ink-faint); }
+  .doc-meta .meta-item .label {
+    font-family: var(--display); font-style: italic; display: block;
+    color: var(--purple); margin-bottom: 2px; letter-spacing: 0.08em;
+  }
+
+  /* ===== Prelude ===== */
+  .prelude {
+    margin: 56px 0 96px; padding: 36px 40px; background: var(--bg-soft);
+    border-left: 3px solid var(--purple-soft); font-size: 16.5px; line-height: 1.9; color: var(--ink-muted);
+  }
+  .prelude .prelude-label {
+    font-family: var(--display); font-style: italic; font-size: 14px; letter-spacing: 0.12em;
+    color: var(--purple); text-transform: uppercase; margin-bottom: 14px;
+  }
+  .prelude p { margin: 0 0 14px; }
+  .prelude p:last-child { margin-bottom: 0; }
+
+  /* ===== Section ===== */
+  section.chapter { margin-bottom: 96px; scroll-margin-top: 24px; }
+  .chapter-header { margin-bottom: 48px; }
+  .chapter-number {
+    font-family: var(--display); font-style: italic; font-size: 15px; letter-spacing: 0.15em;
+    color: var(--purple); text-transform: uppercase; margin-bottom: 12px;
+  }
+  h2.chapter-title {
+    font-family: var(--serif); font-weight: 600; font-size: 29px; line-height: 1.35;
+    margin: 0 0 20px; padding-bottom: 16px; border-bottom: 1px solid var(--rule); letter-spacing: 0.01em;
+  }
+  .chapter-summary {
+    font-family: var(--display); font-style: italic; font-size: 18px; color: var(--ink-muted);
+    line-height: 1.7; margin: 0;
+  }
+
+  /* ===== Subsection ===== */
+  h3.section-title {
+    font-family: var(--serif); font-weight: 600; font-size: 22px; line-height: 1.4;
+    margin: 56px 0 20px; color: var(--ink); scroll-margin-top: 24px; position: relative; padding-left: 20px;
+  }
+  h3.section-title::before {
+    content: ''; position: absolute; left: 0; top: 0.55em; width: 8px; height: 8px;
+    background: var(--purple-soft); border-radius: 50%;
+  }
+  h4.sub-section-title {
+    font-family: var(--serif); font-weight: 600; font-size: 17px; line-height: 1.5;
+    margin: 36px 0 14px; color: var(--ink); letter-spacing: 0.02em;
+  }
+
+  /* ===== Body paragraphs ===== */
+  p { margin: 0 0 18px; }
+  p + p { margin-top: -2px; }
+  strong { font-weight: 600; color: var(--ink); }
+  em { color: var(--purple); font-style: italic; }
+
+  /* ===== Lists ===== */
+  ul, ol { margin: 0 0 22px; padding-left: 28px; }
+  li { margin-bottom: 10px; }
+  li::marker { color: var(--purple-soft); }
+
+  /* ===== Math display ===== */
+  .math-display {
+    margin: 24px 0; padding: 18px 24px; background: var(--bg-soft);
+    border-left: 2px solid var(--purple-pale-border); overflow-x: auto;
+  }
+
+  /* ===== Callout boxes ===== */
+  .callout { margin: 28px 0; padding: 24px 28px; border-radius: 2px; background: var(--bg-soft); position: relative; }
+  .callout .callout-label {
+    font-family: var(--display); font-style: italic; font-size: 13px; letter-spacing: 0.14em;
+    text-transform: uppercase; display: block; margin-bottom: 12px;
+  }
+  .callout.definition { background: var(--blue-pale); border-left: 3px solid var(--blue); }
+  .callout.definition .callout-label { color: var(--blue); }
+  .callout.theorem { background: var(--purple-pale); border-left: 3px solid var(--purple); }
+  .callout.theorem .callout-label { color: var(--purple); }
+  .callout.example { background: var(--pink-pale); border-left: 3px solid var(--pink); }
+  .callout.example .callout-label { color: var(--pink); }
+  .callout.insight { background: var(--bg-soft); border-left: 3px solid var(--ink-muted); }
+  .callout.insight .callout-label { color: var(--ink-muted); }
+  .callout p:last-child { margin-bottom: 0; }
+
+  /* ===== Clarify box (觀念釐清 / 補充說明 / 舉例說明) ===== */
+  .clarify {
+    margin: 34px 0; border: 1px solid var(--blue-pale-border); border-radius: 5px;
+    background: linear-gradient(180deg, #f6f4fa 0%, var(--blue-pale) 100%);
+    overflow: hidden; box-shadow: 0 1px 0 rgba(111,93,138,0.04);
+  }
+  .clarify-head {
+    display: flex; align-items: center; gap: 12px; padding: 13px 28px;
+    background: rgba(255,255,255,0.55); border-bottom: 1px solid var(--blue-pale-border);
+    font-family: var(--display); font-style: italic; letter-spacing: 0.12em;
+    text-transform: uppercase; font-size: 13px; color: var(--blue);
+  }
+  .clarify-head .mark {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%; background: var(--blue-soft);
+    color: #fff; font-style: normal; font-family: var(--serif); font-weight: 600; font-size: 13px; flex: none;
+  }
+  .clarify-body { padding: 22px 28px 6px; }
+  .clarify-body p { color: var(--ink-muted); }
+  .clarify-body .math-display { background: rgba(255,255,255,0.6); border-left-color: var(--blue-pale-border); }
+  .tag {
+    display: inline-block; font-family: var(--serif); font-weight: 600; font-size: 12.5px;
+    letter-spacing: 0.06em; padding: 2px 12px; border-radius: 999px; margin: 18px 0 8px;
+    background: #fff; border: 1px solid var(--blue-pale-border); color: var(--blue);
+  }
+  .tag.t-intuit { color: var(--pink); border-color: var(--pink-pale-border); background: #fff; }
+  .tag.t-why    { color: var(--purple); border-color: var(--purple-pale-border); background: #fff; }
+  .tag.t-example{ color: var(--blue); border-color: var(--blue-pale-border); background: #fff; }
+  .clarify-body .tag:first-child { margin-top: 0; }
+
+  /* ===== Algorithm block ===== */
+  .algo {
+    margin: 30px 0; border: 1px solid var(--rule); border-radius: 4px; background: var(--bg-soft); overflow: hidden;
+  }
+  .algo-title {
+    padding: 11px 20px; border-bottom: 1px solid var(--rule); background: rgba(255,255,255,0.5);
+    font-family: var(--serif); font-weight: 600; font-size: 14.5px; color: var(--ink); letter-spacing: 0.02em;
+  }
+  .algo-input {
+    padding: 12px 20px; border-bottom: 1px dashed var(--rule-faint);
+    font-size: 14.5px; color: var(--ink-muted);
+  }
+  .algo ol.algo-lines {
+    list-style: none; counter-reset: aln; margin: 0; padding: 12px 20px 16px;
+    font-size: 14.5px; line-height: 1.95;
+  }
+  .algo ol.algo-lines li {
+    counter-increment: aln; position: relative; padding-left: 34px; margin-bottom: 2px; color: var(--ink);
+  }
+  .algo ol.algo-lines li::before {
+    content: counter(aln); position: absolute; left: 0; top: 0;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-faint); width: 24px; text-align: right;
+  }
+  .algo .kw { color: var(--purple); font-weight: 600; }
+  .algo .ind1 { padding-left: 58px; }
+  .algo .ind1::before { left: 24px; }
+  .algo .ind2 { padding-left: 82px; }
+  .algo .ind2::before { left: 48px; }
+
+  /* ===== Quote ===== */
+  blockquote {
+    margin: 28px 0; padding: 4px 0 4px 28px; border-left: 2px solid var(--purple-soft);
+    font-style: italic; color: var(--ink-muted); font-family: var(--display); font-size: 18px; line-height: 1.7;
+  }
+
+  /* ===== Drop cap ===== */
+  .lead::first-letter {
+    font-family: var(--display); font-size: 56px; line-height: 1; float: left;
+    padding: 4px 12px 0 0; color: var(--purple); font-weight: 500;
+  }
+
+  /* ===== Code / inline ===== */
+  code {
+    font-family: var(--mono); font-size: 0.9em; background: var(--bg-soft);
+    padding: 1px 6px; border-radius: 2px; color: var(--purple);
+  }
+
+  /* ===== Figures ===== */
+  figure { margin: 40px 0; text-align: center; }
+  figure svg { max-width: 100%; height: auto; }
+  figcaption {
+    margin-top: 14px; font-family: var(--display); font-style: italic; font-size: 14px;
+    color: var(--ink-muted); line-height: 1.6;
+  }
+  .fig-frame {
+    border: 1px solid var(--rule-faint); border-radius: 4px; background: #fff; padding: 24px 16px; display: inline-block; max-width: 100%;
+  }
+
+  /* ===== Table ===== */
+  .table-wrap { margin: 28px 0; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--rule-faint); vertical-align: top; }
+  th { font-weight: 600; color: var(--purple); border-bottom: 2px solid var(--purple-pale-border); font-size: 14px; letter-spacing: 0.04em; }
+  td.num, th.num { text-align: right; font-family: var(--mono); font-size: 13px; }
+  tr.best td { background: var(--purple-pale); }
+
+  /* ===== Divider ===== */
+  hr.fancy { border: none; height: 1px; background: linear-gradient(90deg, transparent, var(--rule) 20%, var(--rule) 80%, transparent); margin: 56px 0; }
+  .divider-ornament { text-align: center; margin: 56px 0; font-family: var(--display); font-style: italic; color: var(--purple-soft); letter-spacing: 1em; font-size: 18px; }
+
+  /* ===== Footer ===== */
+  footer.colophon { margin-top: 120px; padding-top: 36px; border-top: 1px solid var(--rule); font-size: 14px; color: var(--ink-faint); line-height: 1.7; }
+  footer.colophon .colophon-label { font-family: var(--display); font-style: italic; color: var(--purple); letter-spacing: 0.12em; text-transform: uppercase; font-size: 12px; margin-bottom: 12px; }
+
+  /* MathJax sizing */
+  mjx-container { font-size: 1em !important; }
+  mjx-container[display="true"] { margin: 0.6em 0 !important; }
+</style>
+</head>
+
+<body>
+<div class="layout">
+  <aside class="toc" aria-label="目錄">
+    <div class="toc-label">Contents</div>
+    <ol>
+      <li><a href="#ch1">問題的形式化</a>
+        <ol>
+          <li><a href="#sec-1-1">異質圖與型別代數</a></li>
+          <li><a href="#sec-1-2">黑盒 HGN 與漫遊的代數</a></li>
+          <li><a href="#sec-1-3">細粒度解釋 (v, P)</a></li>
+          <li><a href="#sec-1-4">Top-K 問題定義</a></li>
+        </ol>
+      </li>
+      <li><a href="#ch2">漫遊擾動：理論核心</a>
+        <ol>
+          <li><a href="#sec-2-1">為何是 Walk 而非 Path</a></li>
+          <li><a href="#sec-2-2">Definition 4：漫遊</a></li>
+          <li><a href="#sec-2-3">Definition 5：相關聯漫遊集</a></li>
+          <li><a href="#sec-2-4">Theorem 1：解耦性</a></li>
+        </ol>
+      </li>
+      <li><a href="#ch3">圖重連演算法</a>
+        <ol>
+          <li><a href="#sec-3-1">替身節點與陷阱網路</a></li>
+          <li><a href="#sec-3-2">Algorithm 1 逐條解析</a></li>
+          <li><a href="#sec-3-3">Example 2：三類漫遊的命運</a></li>
+          <li><a href="#sec-3-4">Definition 6：等價漫遊</a></li>
+          <li><a href="#sec-3-5">Theorem 2：正確性</a></li>
+        </ol>
+      </li>
+      <li><a href="#ch4">影響力分數與貪婪搜尋</a>
+        <ol>
+          <li><a href="#sec-4-1">Definition 7：影響力分數</a></li>
+          <li><a href="#sec-4-2">Algorithm 2：Top-K 搜尋</a></li>
+          <li><a href="#sec-4-3">時間複雜度</a></li>
+        </ol>
+      </li>
+      <li><a href="#ch5">實驗評估</a>
+        <ol>
+          <li><a href="#sec-5-1">設定與基線</a></li>
+          <li><a href="#sec-5-2">保真度指標與公平性</a></li>
+          <li><a href="#sec-5-3">結果分析</a></li>
+          <li><a href="#sec-5-4">影響力分數有效性</a></li>
+          <li><a href="#sec-5-5">效率與案例研究</a></li>
+        </ol>
+      </li>
+      <li><a href="#ch6">理論評析與結語</a></li>
+      <li><a href="#appendix">附錄：符號速查</a></li>
+    </ol>
+  </aside>
+
+  <main>
+    <header class="title-block">
+      <div class="eyebrow">Lecture Notes &middot; Paper Reading</div>
+      <h1 class="doc-title">xPath：異質圖神經網路的<br/>細粒度可解釋性</h1>
+      <p class="doc-subtitle">Towards Fine-Grained Explainability for Heterogeneous Graph Neural Network — 一份著重數學建構脈絡的精讀講義。</p>
+      <div class="doc-meta">
+        <div class="meta-item"><span class="label">Venue</span>AAAI 2023</div>
+        <div class="meta-item"><span class="label">Authors</span>Li, Deng, Shen 等</div>
+        <div class="meta-item"><span class="label">Theme</span>Walk-level Perturbation</div>
+        <div class="meta-item"><span class="label">Prerequisite</span>《通往 xPath 之路》</div>
+      </div>
+    </header>
+
+    <section class="prelude" aria-label="序言">
+      <div class="prelude-label">Prelude &middot; 緒言</div>
+      <p>
+        先備知識講義《通往 xPath 之路》在最後留下了一個尖銳而具體的問題：
+        <em>給定一條簡單路徑 $P$，我們能否在不影響其他資訊流的前提下，精準阻斷所有以 $P$ 為骨幹的漫遊，
+        從而獨立地量化 $(v, P)$ 對 GNN 預測的影響？</em>
+        這份講義就是這個問題的完整答案——也就是 xPath 論文本身。
+      </p>
+      <p>
+        我們會嚴格地走過論文的每一個定義、每一條定理、每一行演算法，
+        並特別關注它們之間的<strong>邏輯脈絡</strong>：為什麼需要這個定義？這條定理保證了什麼？
+        這行偽碼背後的代數動機是什麼？凡是只學過基本 GNN 的讀者可能卡住的地方，
+        我都會在下方追加一塊<strong>「觀念釐清／補充說明／舉例說明」</strong>，把直覺與細節補足。
+      </p>
+    </section>
+
+    <!-- ============================================== -->
+    <!-- CHAPTER 1 -->
+    <!-- ============================================== -->
+    <section class="chapter" id="ch1">
+      <div class="chapter-header">
+        <div class="chapter-number">Chapter One</div>
+        <h2 class="chapter-title">問題的形式化</h2>
+        <p class="chapter-summary">
+          一篇好的理論論文，會把整個方法的目標壓縮成幾個精確的定義。
+          本章逐一拆解 xPath 的四個地基：異質圖、黑盒 HGN、細粒度解釋、以及 Top-$K$ 最佳化問題。
+          我們會特別點出每個定義背後的代數結構。
+        </p>
+      </div>
+
+      <h3 class="section-title" id="sec-1-1">1.1 Definition 1：異質圖與型別代數</h3>
+
+      <p class="lead">
+        傳統同質圖 $G = (V, E)$ 只有一種節點與一種邊。真實世界的關係資料遠比這豐富，
+        因此論文採用帶有型別映射的<em>異質圖</em>定義：
+      </p>
+
+      <div class="callout definition">
+        <span class="callout-label">Definition 1 &middot; Heterogeneous Graph</span>
+        <p>
+          異質圖 $G = (V, E, \phi, \psi)$ 由節點集 $V$ 與有向邊集 $E$ 組成，並配備兩個型別映射函數：
+        </p>
+        <div class="math-display">
+          $$\phi : V \to T \quad\text{（節點型別函數）}, \qquad \psi : E \to S \quad\text{（邊型別函數）},$$
+        </div>
+        <p>
+          其中 $T, S$ 分別是預先定義的節點型別集與邊型別集，且滿足 $|T| + |S| > 2$。
+        </p>
+      </div>
+
+      <p>
+        例如在學術圖中，$T = \{\text{Author}, \text{Paper}, \text{Conference}\}$，
+        而 $S$ 可能包含「撰寫」、「發表於」等關係。型別資訊不是裝飾——它承載了
+        <em>元路徑（meta-path）</em>所代表的語意：APA（作者-論文-作者）是合作關係，
+        APCPA（作者-論文-會議-論文-作者）是同領域發表關係。同一對端點之間，
+        不同型別序列的路徑，在現實意義上是完全不同的推理。
+
+      </p>
+
+      <div class="clarify">
+        <div class="clarify-head"><span class="mark">i</span>觀念釐清 &middot; 補充說明 &middot; 舉例說明</div>
+        <div class="clarify-body">
+          <span class="tag t-why">為什麼是 $|T| + |S| > 2$ 而不是 $|T| > 1$？</span>
+          <p>
+            這個條件是用來「排除同質圖」的最寬鬆代數判準。同質圖恰好是 $|T| = 1$ 且 $|S| = 1$，
+            此時 $|T| + |S| = 2$。只要任一邊「異質化」——多一種節點型別，或多一種邊型別——
+            和式就嚴格大於 $2$。注意它<strong>不</strong>要求 $|T| > 1$：一個只有單一節點型別、
+            但有多種邊型別的圖（例如社群網路中「朋友」與「封鎖」兩種關係）仍是異質圖。
+            這種「以總和而非個別維度設限」的寫法，在代數上把「異質」定義成
+            「型別空間 $T \sqcup S$ 的基數超過同質基準」，相當俐落。
+          </p>
+
+          <span class="tag t-intuit">直覺：型別是給訊息傳遞用的「顏色」</span>
+          <p>
+            把 $\phi, \psi$ 想成替每個節點與邊塗上顏色。HGN 在聚合鄰居時，
+            會依照邊的顏色套用不同的權重矩陣 $W_{\psi(e)}$。
+            因此「型別」不只是標籤，而是直接參與了線性代數運算——這也是為什麼
+            稍後 xPath 在建立替身節點時，必須<strong>原封不動地繼承型別與特徵</strong>：
+            否則訊息傳遞的數值結果就會被改變，擾動就不再「乾淨」。
+          </p>
+        </div>
+      </div>
+
+
+      <h3 class="section-title" id="sec-1-2">1.2 Definition 2：黑盒 HGN 與漫遊的代數</h3>
+
+      <div class="callout definition">
+        <span class="callout-label">Definition 2 &middot; Heterogeneous GNN $M_G$</span>
+        <p>
+          $M_G : V \to C$ 是一個已訓練好、在 $G$ 上執行節點分類的異質圖神經網路，$C$ 為標籤集。
+          對任一目標節點 $v_t \in V$，$M_G(v_t)$ 是模型輸出（一個類別機率分布）。
+        </p>
+      </div>
+
+      <p>論文對 $M_G$ 只做兩個假設，其餘一律視為黑盒：</p>
+      <ul>
+        <li>
+          <strong>訊息傳遞假設：</strong>$M_G$ 沿著 $G$ 中的<em>有向邊</em>進行訊息傳遞。
+          這幾乎涵蓋所有主流 HGN（R-GCN、HGT、SimpleHGN、MAGNN…）。
+          這個假設是整套方法的物理基礎——它確保「結構路徑」真的對應「資訊流」。
+        </li>
+        <li>
+          <strong>黑盒假設：</strong>不需取得內部架構或參數，只需能查詢「輸入圖 $\to$ 輸出機率」。
+          這讓 xPath 適用於商業部署、模型受機密保護的場景。
+        </li>
+      </ul>
+
+      <div class="clarify">
+        <div class="clarify-head"><span class="mark">i</span>觀念釐清 &middot; 補充說明 &middot; 舉例說明</div>
+        <div class="clarify-body">
+          <span class="tag t-why">為什麼「訊息沿邊傳遞」這麼關鍵？漫遊的代數刻畫</span>
+          <p>
+            這是全文最值得用代數說清楚的一點。把（單一型別、為了說明）的鄰接矩陣記為 $A$。
+            線性代數有一個基本事實：
+          </p>
+          <div class="math-display">
+            $$\bigl(A^L\bigr)_{ij} = \text{從節點 } i \text{ 到節點 } j \text{、長度為 } L \text{ 的漫遊（walk）數目}.$$
+          </div>
+          <p>
+            一個 $L$ 層的 GNN，在更新 $v_t$ 的表示時，本質上是在計算一個深度為 $L$ 的
+            <em>運算樹（computation tree）</em>：把 $v_t$ 當根，往外展開 $L$ 層鄰居。
+            這棵樹的每一條「根到葉」的路線，恰好對應一條長度 $L$、終點為 $v_t$ 的<strong>漫遊</strong>，
+            而非簡單路徑。形式上，$v_t$ 的最終表示可寫成所有這些漫遊上的訊息之（非線性）聚合：
+          </p>
+          <div class="math-display">
+            $$h_{v_t}^{(L)} \;\approx\; \mathrm{AGG}\Bigl(\, \{\, \text{message along } W \;:\; W \text{ 是終於 } v_t \text{、長度 } L \text{ 的漫遊} \}\,\Bigr).$$
+          </div>
+          <p>
+            $A^L$ 把「漫遊計數」這件事代數化了——而漫遊<strong>會重複經過節點</strong>
+            （因為 $A^L$ 不會去重）。這就是為什麼資訊流的真實載體是漫遊而非簡單路徑。
+            記住這件事，第二章 Definition 5 看似古怪的三個條件才會變得理所當然。
+          </p>
+
+          <span class="tag t-intuit">直覺：黑盒 ≠ 一無所知</span>
+          <p>
+            「黑盒」聽起來很受限，但其實留了一個強而有力的旋鈕：我們可以<strong>任意改寫輸入圖</strong>，
+            再看輸出怎麼變。xPath 的全部威力，就建立在「巧妙地改寫圖結構」這一個動作上——
+            這正是下面圖重連演算法要做的事。
+          </p>
+        </div>
+      </div>
+
+
+      <h3 class="section-title" id="sec-1-3">1.3 Definition 3：細粒度解釋 $(v, P)$</h3>
+
+      <div class="callout definition">
+        <span class="callout-label">Definition 3 &middot; Fine-Grained Explanation $X_G$</span>
+        <p>
+          要解釋預測 $M_G(v_t)$，細粒度解釋形式化為二元組
+          $$X_G(v_t) = (v, P),$$
+          其中 $v \in V \setminus \{v_t\}$ 是預測的<strong>原因節點</strong>（回答 <em>What</em>），
+          $P = \langle v, \dots, v_t \rangle$ 是一條從 $v$ 連到 $v_t$ 的<strong>有向簡單（無環）路徑</strong>，
+          指出 $v$ 究竟<strong>如何</strong>影響 $M_G(v_t)$（回答 <em>How</em>）。
+        </p>
+      </div>
+
+      <p>
+        令 $\mathcal{P}_G(v_t)$ 為圖中所有以 $v_t$ 為終點的簡單路徑集合，則全體可能的細粒度解釋構成：
+      </p>
+      <div class="math-display">
+        $$\mathcal{X}_G(v_t) = \bigl\{\, (v, P) \;\big|\; P = \langle v, \dots, v_t \rangle \in \mathcal{P}_G(v_t) \,\bigr\}.$$
+      </div>
+
+      <p>
+        這是論文的概念創新：把解釋單元從「節點 / 邊 / 子圖」升級為「節點 + 路徑」。
+        路徑這個物件恰好坐落在「邊」與「子圖」之間，
+        既比邊更能承載語意（它是一整條元路徑），又比子圖更精確（它指明了單一資訊流方向）。
+      </p>
+
+
+      <h3 class="section-title" id="sec-1-4">1.4 問題定義：Top-$K$ 最具影響力解釋</h3>
+
+      <p>
+        令 $\mathrm{IF}(X_G(v_t))$ 表示原因節點 $v$ 沿路徑 $P$ 對預測 $M_G(v_t)$ 的<em>影響力分數</em>
+        （此分數的精確定義要到第四章才能給出，因為它依賴於前三章建立的擾動機制）。
+        論文的目標可一句話陳述：
+      </p>
+
+      <blockquote>
+        對黑盒 HGN 的每一個預測 $M_G(v_t)$，從 $\mathcal{X}_G(v_t)$ 中找出影響力分數最高的 $K$ 個細粒度解釋。
+      </blockquote>
+
+      <div class="callout insight">
+        <span class="callout-label">脈絡定位</span>
+        <p>
+          這個問題定義立刻暴露兩個技術難關，整篇論文的方法論就是為了攻克它們：
+          <strong>（難關一）</strong>如何<em>單獨地</em>量化某一條 $(v, P)$ 的影響力？
+          ——傳統遮蔽會牽連共用節點的其他路徑（這是先備知識第四章的「影響力糾纏」）。
+          <strong>（難關二）</strong>$\mathcal{P}_G(v_t)$ 的大小隨邊數呈指數成長，無法全枚舉。
+          第二、三章解決難關一（圖重連），第四章解決難關二（貪婪搜尋）。
+        </p>
+      </div>
+
+      <div class="divider-ornament">&sect; &sect; &sect;</div>
+    </section>
+
+    <!-- ============================================== -->
+    <!-- CHAPTER 2 -->
+    <!-- ============================================== -->
+    <section class="chapter" id="ch2">
+      <div class="chapter-header">
+        <div class="chapter-number">Chapter Two</div>
+        <h2 class="chapter-title">漫遊擾動：理論核心</h2>
+        <p class="chapter-summary">
+          這是全篇最精緻的數學段落。論文要回答一個看似簡單卻極難形式化的問題：
+          「一條簡單路徑 $P$，到底對應到哪些真實的資訊流軌跡？」
+          答案是 Definition 5 的相關聯漫遊集 $\mathcal{W}_G^P$，而 Theorem 1 保證了它的可區分性。
+        </p>
+      </div>
+
+      <h3 class="section-title" id="sec-2-1">2.1 為何擾動的對象是 Walk 而非 Path</h3>
+
+      <p class="lead">
+        先備知識已論證 GNN 沿漫遊傳遞資訊。這裡我們把它放進本論文的具體場景。
+        考慮 Figure 2(a) 中的路徑 $P = \langle D, C, B, A \rangle$。
+      </p>
+
+      <figure>
+        <div class="fig-frame">
+          <svg viewBox="0 0 460 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Figure 2a">
+            <defs>
+              <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="#5a5a5a"/>
+              </marker>
+              <marker id="arrP" markerWidth="10" markerHeight="10" refX="7" refY="3.2" orient="auto">
+                <path d="M0,0 L8,3.2 L0,6.4 Z" fill="#6f5d8a"/>
+              </marker>
+            </defs>
+            <!-- nodes: A top, B left, E right, C bottom-left, D bottom-right -->
+            <!-- edges (thin grey) -->
+            <line x1="120" y1="120" x2="105" y2="70" stroke="#9a9a9a" stroke-width="1.4" marker-end="url(#arr)"/><!-- B->A -->
+            <line x1="150" y1="120" x2="300" y2="120" stroke="#9a9a9a" stroke-width="1.4" marker-end="url(#arr)"/><!-- B->E -->
+            <line x1="135" y1="155" x2="135" y2="200" stroke="#9a9a9a" stroke-width="1.4" marker-end="url(#arr)"/><!-- B->C (extra) -->
+            <line x1="320" y1="150" x2="305" y2="205" stroke="#9a9a9a" stroke-width="1.4" marker-end="url(#arr)"/><!-- E->D -->
+            <line x1="190" y1="215" x2="120" y2="95" stroke="#9a9a9a" stroke-width="1.2" marker-end="url(#arr)"/><!-- C->A (shortcut) -->
+            <!-- path P edges (purple bold): D->C, C->B, B->A -->
+            <line x1="270" y1="225" x2="190" y2="225" stroke="#6f5d8a" stroke-width="3" marker-end="url(#arrP)"/><!-- D->C -->
+            <line x1="150" y1="215" x2="125" y2="150" stroke="#6f5d8a" stroke-width="3" marker-end="url(#arrP)"/><!-- C->B -->
+            <line x1="118" y1="118" x2="103" y2="68" stroke="#6f5d8a" stroke-width="3" marker-end="url(#arrP)"/><!-- B->A bold over -->
+            <!-- node boxes -->
+            <g font-family="Noto Serif TC, serif" font-size="14" fill="#1a1a1a">
+              <rect x="86" y="44" width="34" height="34" rx="4" fill="#fff" stroke="#1a1a1a"/><text x="128" y="66">A</text>
+              <rect x="108" y="120" width="34" height="34" rx="4" fill="#fff" stroke="#1a1a1a"/><text x="90" y="142">B</text>
+              <rect x="300" y="104" width="34" height="34" rx="4" fill="#fff" stroke="#1a1a1a"/><text x="342" y="126">E</text>
+              <rect x="118" y="205" width="34" height="34" rx="4" fill="#fff" stroke="#1a1a1a"/><text x="124" y="262">C</text>
+              <rect x="270" y="208" width="34" height="34" rx="4" fill="#fff" stroke="#1a1a1a"/><text x="282" y="262">D</text>
+            </g>
+          </svg>
+        </div>
+        <figcaption>Figure 2(a)：細粒度解釋 $(v=D,\; P=\langle D,C,B,A\rangle)$。紫色粗邊為路徑 $P$，灰色細邊為其他連結。</figcaption>
+      </figure>
+
+      <p>
+        在這張圖上，下面三條漫遊有著截然不同的身分：
+      </p>
+      <ul>
+        <li>$\langle D, C, B, A \rangle$：沿 $P$ 直走，<strong>參與</strong>了「$D$ 經由 $P$ 影響 $A$」。</li>
+        <li>$\langle D, C, B, C, B, A \rangle$：在 $B,C$ 間折返，但骨幹仍是 $P$，<strong>也參與</strong>了這個傳遞。</li>
+        <li>$\langle D, C, A \rangle$：走了捷徑 $C \to A$，<strong>不沿</strong> $P$，與這條解釋無關。</li>
+      </ul>
+
+      <p>
+        關鍵洞見：要量化 $(D, P)$ 的影響力，我們要阻斷的是<em>前兩條</em>而<strong>放過</strong>第三條。
+        但傳統做法「刪掉邊 $\langle D, C\rangle$」會連第三條一起殺死，「遮蔽節點 $C$」更會牽連所有經過 $C$ 的傳遞。
+        所以必須發明一種能精準鎖定「與 $P$ 相關聯的漫遊」的工具。第一步，是先把這個集合<em>定義清楚</em>。
+      </p>
+
+
+      <h3 class="section-title" id="sec-2-2">2.2 Definition 4：漫遊</h3>
+
+      <div class="callout definition">
+        <span class="callout-label">Definition 4 &middot; Walk $W_G$</span>
+        <p>
+          給定異質圖 $G$，一條漫遊 $W_G = \langle v_1, \dots, v_L \rangle$ 是一個節點序列，
+          滿足 $\langle v_i, v_{i+1}\rangle \in E$ 對所有 $i \in [1, L-1]$ 成立，且 $L \ge 2$。
+          與簡單路徑不同，漫遊<strong>可以包含自迴圈與重複節點</strong>。
+        </p>
+      </div>
+
+
+      <h3 class="section-title" id="sec-2-3">2.3 Definition 5：與 $P$ 相關聯的漫遊集 $\mathcal{W}_G^P$</h3>
+
+      <p>
+        這是本論文最精巧的定義。它要刻畫「以 $P$ 為骨幹的所有漫遊」。
+      </p>
+
+      <div class="callout definition">
+        <span class="callout-label">Definition 5 &middot; Walks Associated with $P$</span>
+        <p>
+          給定細粒度解釋 $(v, P)$，漫遊 $W_G = \langle v_1, \dots, v_L\rangle$ 與 $P$ <em>相關聯</em>，
+          當且僅當它包含一個<strong>後綴</strong> $\langle v_l, \dots, v_L\rangle$ 滿足下列三個條件：
+        </p>
+        <div class="math-display">
+          $$
+          \begin{aligned}
+          \textbf{(i)}\quad & v_l = v \;\wedge\; v_L = v_t \;\wedge\; \forall\, l \le i < L,\; v_i \neq v_t; \\[4pt]
+          \textbf{(ii)}\quad & \forall\, i \in [l, L-1],\;\; v_i = v_{i+1} \;\;\vee\;\; \langle v_i, v_{i+1}\rangle, \langle v_{i+1}, v_i\rangle \text{ 中恰有一條} \in P; \\[4pt]
+          \textbf{(iii)}\quad & \text{擦除後綴中所有迴圈後，得到的序列恰好等於 } P.
+          \end{aligned}
+          $$
+        </div>
+        <p>記 $\mathcal{W}_G^P$ 為所有與 $P$ 相關聯的漫遊集合。</p>
+      </div>
+
+      <div class="clarify">
+        <div class="clarify-head"><span class="mark">i</span>觀念釐清 &middot; 補充說明 &middot; 舉例說明</div>
+        <div class="clarify-body">
+          <span class="tag t-why">為什麼要拆出「後綴」，而不是要求整條漫遊都合規？</span>
+          <p>
+            因為一條真實的資訊流，可能在抵達原因節點 $v$ 之前，先在圖的其他角落亂走了一陣。
+            我們只在意「從 $v$ 開始、最終匯入 $v_t$」的那一段——也就是<strong>後綴</strong>。
+            前綴怎麼走都無所謂；條件 (i)–(iii) 只約束 $\langle v_l, \dots, v_L\rangle$ 這個尾巴。
+            這讓定義能對應「資訊一旦進入 $v$ 就開始沿 $P$ 傳遞」這個物理過程。
+          </p>
+
+          <span class="tag t-why">三個條件各自在防止什麼？</span>
+          <p>
+            <strong>(i) 端點與不提前結算。</strong>後綴必須以原因 $v$ 為起點、目標 $v_t$ 為終點，
+            而且中途<em>不能提前踩到 $v_t$</em>。最後這句很關鍵——若中途碰到 $v_t$，
+            訊息就已經「到站」了，那段就該算成另一條更短的傳遞，不屬於沿完整 $P$ 的傳遞。
+          </p>
+          <p>
+            <strong>(ii) 每一步只能在 $P$ 的軌道上移動。</strong>
+            每一步要嘛<em>原地不動</em>（$v_i = v_{i+1}$，對應自迴圈或停留），
+            要嘛沿著一條「屬於 $P$ 骨架的邊」前進或後退。
+            「$\langle v_i, v_{i+1}\rangle, \langle v_{i+1}, v_i\rangle$ 中恰有一條 $\in P$」這句話的意思是：
+            把這一步對應的無向邊 $\{v_i, v_{i+1}\}$ 拿去比對 $P$，它必須是 $P$ 用到的那些邊之一
+            （因為 $P$ 是有向簡單路徑，每對相鄰節點只會以單一方向出現，所以「恰有一條」），
+            <em>但允許逆著 $P$ 的方向走回頭路</em>。這正是「折返」之所以合法的原因。
+          </p>
+          <p>
+            <strong>(iii) 擦掉折返後，骨幹恰為 $P$。</strong>
+            「擦除迴圈」是指反覆把序列中的環（如 $\dots B,C,B\dots$ 這種折返）消掉，直到剩下一條簡單路徑。
+            這條精簡後的路徑必須<em>剛好等於 $P$</em>——一字不差。
+            這保證了漫遊的「淨進展」確實是沿著 $P$ 而非某條別的路徑。
+          </p>
+
+          <span class="tag t-example">舉例：逐步驗證 $\langle D,C,B,C,B,A\rangle$ 屬於 $\mathcal{W}_G^P$</span>
+          <p>
+            取 $P = \langle D, C, B, A\rangle$，後綴就是整條漫遊本身（$l = 1$）。
+          </p>
+          <ul>
+            <li>(i) 起點 $D = v$ ✓，終點 $A = v_t$ ✓，中途 $C,B,C,B$ 都不是 $A$ ✓。</li>
+            <li>(ii) 逐步檢查：$D\to C$（$\langle D,C\rangle \in P$，恰一條 ✓）、$C\to B$（$\langle C,B\rangle \in P$ ✓）、
+              $B\to C$（$\langle C,B\rangle \in P$ 而 $\langle B,C\rangle \notin P$，恰一條 ✓，這是合法的<em>回頭走</em>）、
+              $C\to B$（✓）、$B\to A$（$\langle B,A\rangle \in P$ ✓）。</li>
+            <li>(iii) 把折返 $\dots C,B,C\dots$ 的環擦掉，得 $\langle D,C,B,A\rangle = P$ ✓。</li>
+          </ul>
+          <p>
+            三條全過，故此漫遊屬於 $\mathcal{W}_G^P$。
+            反觀捷徑 $\langle D, C, A\rangle$：步驟 $C \to A$ 對應的邊 $\{C,A\}$ 根本不在 $P$ 的骨架上
+            （$P$ 從 $C$ 出去是走向 $B$），(ii) 不成立，故<strong>不</strong>屬於 $\mathcal{W}_G^P$。
+            這正好對應我們的直覺：它走了捷徑，與沿 $P$ 的傳遞無關。
+          </p>
+        </div>
+      </div>
+
+
+      <h3 class="section-title" id="sec-2-4">2.4 Theorem 1：解耦性的理論保證</h3>
+
+      <div class="callout theorem">
+        <span class="callout-label">Theorem 1 &middot; Decoupling</span>
+        <p>
+          對於兩條不同的細粒度解釋 $X_{G,1}(v_t) = (v_1, P_1)$ 與 $X_{G,2}(v_t) = (v_2, P_2)$，
+          若 $P_1 \neq P_2$，則
+          $$\mathcal{W}_G^{P_1} \neq \mathcal{W}_G^{P_2}.$$
+        </p>
+      </div>
+
+      <p>
+        這條定理是整套方法<strong>能否成立</strong>的關鍵。它說：即使兩條路徑共用節點，
+        它們各自對應的「漫遊集合」在數學上仍可區分。
+      </p>
+
+      <div class="clarify">
+        <div class="clarify-head"><span class="mark">i</span>觀念釐清 &middot; 補充說明 &middot; 舉例說明</div>
+        <div class="clarify-body">
+          <span class="tag t-why">為什麼這條定理直接擊潰了「影響力糾纏」？</span>
+          <p>
+            回想先備知識第四章的困境：遮蔽節點 $v$，會同時切斷 $(v, P_1)$ 與 $(v, P_2)$，
+            觀測到的預測變化是兩者的混合，無法分離。糾纏的根源是
+            「不同解釋共用同一個被擾動的物件（節點 / 邊）」。
+          </p>
+          <p>
+            Theorem 1 把擾動對象從「靜態物件」換成「漫遊集合」，並證明<em>不同路徑對應不同漫遊集</em>。
+            於是只要我們有辦法「精準阻斷 $\mathcal{W}_G^{P_1}$ 而不碰 $\mathcal{W}_G^{P_2}$」，
+            就能得到純屬 $P_1$ 的影響力。糾纏從根本上被解開了——這就是「解耦（decoupling）」一詞的由來。
+          </p>
+
+          <span class="tag t-intuit">直覺：骨幹是漫遊集的「指紋」</span>
+          <p>
+            為什麼不同路徑必然給出不同漫遊集？看 Definition 5 的條件 (iii)：
+            任何屬於 $\mathcal{W}_G^P$ 的漫遊，把折返擦掉後<strong>骨幹必為 $P$</strong>。
+            換句話說，路徑 $P$ 就像漫遊集合的一枚指紋——
+            集合裡每條漫遊都「記得」自己的骨幹是誰。
+            若 $P_1 \neq P_2$，那麼任何骨幹為 $P_1$ 的漫遊，其骨幹就不可能是 $P_2$，
+            因此它不會出現在 $\mathcal{W}_G^{P_2}$ 中。兩個集合於是不可能相等
+            （事實上更強：它們連交集都是空的）。這就是定理的證明梗概。
+          </p>
+
+          <span class="tag t-why">為什麼定理只說「不相等」而不直接說「不相交」？</span>
+          <p>
+            論文後續推論其實只需要「不相等」這個較弱的結論，
+            就足以論證「不同路徑的擾動結果可被區分」。
+            但從上面的指紋論證可看出，實際上更強的「不相交」也成立。
+            作者選擇陳述較弱版本，是因為它已足夠支撐方法的正確性，
+            這在理論寫作上是常見的「夠用就好」策略。
+          </p>
+        </div>
+      </div>
+
+      <div class="callout insight">
+        <span class="callout-label">承先啟後</span>
+        <p>
+          至此，理論的前半完成：我們<em>定義</em>了該擾動的對象（$\mathcal{W}_G^P$），
+          並<em>證明</em>了它是可區分的（Theorem 1）。
+          下一個任務純粹是構造性的：<strong>設計一個演算法，把 $\mathcal{W}_G^P$ 裡的漫遊全部阻斷，
+          其餘漫遊一條不傷。</strong>這就是第三章的圖重連。
+        </p>
+      </div>
+
+      <div class="divider-ornament">&sect; &sect; &sect;</div>
+    </section>
+
+    <!-- ============================================== -->
+    <!-- CHAPTER 3 -->
+    <!-- ============================================== -->
+    <section class="chapter" id="ch3">
+      <div class="chapter-header">
+        <div class="chapter-number">Chapter Three</div>
+        <h2 class="chapter-title">圖重連演算法</h2>
+        <p class="chapter-summary">
+          理論已備：要擾動的是 $\mathcal{W}_G^P$，且它可被解耦。
+          本章是 xPath 的工程心臟——一套「資訊流隔離手術」，
+          透過建立替身節點把沿 $P$ 的漫遊困進死巷，同時讓其餘漫遊毫髮無傷。
+          Theorem 2 會在最後給出這套手術的數學正確性保證。
+        </p>
+      </div>
+
+      <h3 class="section-title" id="sec-3-1">3.1 替身節點與「陷阱網路」直覺</h3>
+
+      <p class="lead">
+        設路徑 $P = \langle v_0(v),\, v_1, \dots, v_L,\, v_{L+1}(v_t)\rangle$，$L \ge 0$。
+        演算法的核心是：為每個<em>內部</em>節點 $v_i$（$i \in [1, L]$）建立一個<strong>替身</strong> $\mathrm{proxy}(v_i)$，
+        把「原本沿 $P$ 流動的資訊」改道到替身網路上，再把資訊流的入口邊切斷。
+      </p>
+
+      <p>結果是兩種命運的乾淨切分：</p>
+      <ul>
+        <li><strong>沿 $P$ 走的漫遊</strong>會被困在替身網路裡，無法到達 $v_t$——<em>被阻斷</em>。</li>
+        <li><strong>不沿 $P$ 走的漫遊</strong>仍可在原始節點間正常傳遞——<em>被保留</em>。</li>
+      </ul>
+
+
+      <h3 class="section-title" id="sec-3-2">3.2 Algorithm 1：逐條解析</h3>
+
+      <div class="algo">
+        <div class="algo-title">Algorithm 1 &middot; Rewiring algorithm</div>
+        <div class="algo-input"><strong>Input:</strong> $G$, &nbsp; $P = \langle v, v_1, \dots, v_L, v_t \rangle$</div>
+        <ol class="algo-lines">
+          <li>$V \leftarrow V \cup \bigcup_{i=1}^{L} \{\mathrm{proxy}(v_i)\}$</li>
+          <li><span class="kw">for</span> $i \in [1, L]$ <span class="kw">do</span></li>
+          <li class="ind1"><span class="kw">for</span> $\langle u, v_i\rangle \in \mathsf{InE}(v_i)$ <span class="kw">do</span></li>
+          <li class="ind2"><span class="kw">if</span> $u = v_i \,\vee\, \langle u, v_i\rangle \in P \,\vee\, \langle v_i, u\rangle \in P$ <span class="kw">then</span></li>
+          <li class="ind2">&nbsp;&nbsp;&nbsp;$E \leftarrow E \cup \{\langle \mathrm{proxy}(u), \mathrm{proxy}(v_i)\rangle\}$</li>
+          <li class="ind2"><span class="kw">end if</span></li>
+          <li class="ind1"><span class="kw">end for</span></li>
+          <li class="ind1"><span class="kw">for</span> $\langle v_i, u\rangle \in \mathsf{OutE}(v_i)$ <span class="kw">do</span></li>
+          <li class="ind2"><span class="kw">if</span> $v_i \neq u \,\wedge\, \langle u, v_i\rangle \notin P \,\wedge\, \langle v_i, u\rangle \notin P$ <span class="kw">then</span></li>
+          <li class="ind2">&nbsp;&nbsp;&nbsp;$E \leftarrow E \cup \{\langle \mathrm{proxy}(v_i), u\rangle\}$</li>
+          <li class="ind2"><span class="kw">end if</span></li>
+          <li class="ind1"><span class="kw">end for</span></li>
+          <li><span class="kw">end for</span></li>
+          <li>$E \leftarrow E \setminus \{\langle v, v_1\rangle\}$</li>
+          <li><span class="kw">return</span> $G$</li>
+        </ol>
+      </div>
+
+      <p>演算法把所有複雜度濃縮在兩條 if 規則與最後一行刪邊。逐條看：</p>
+
+      <ul>
+        <li>
+          <strong>入邊規則（line 4）：</strong>對 $v_i$ 的每條入邊 $\langle u, v_i\rangle$，
+          若它是自迴圈（$u = v_i$），<em>或</em>它對應的無向邊屬於 $P$ 骨架
+          （$\langle u, v_i\rangle \in P$ 或 $\langle v_i, u\rangle \in P$），
+          就新增一條<em>替身對替身</em>的邊 $\langle \mathrm{proxy}(u), \mathrm{proxy}(v_i)\rangle$。
+          <br/>→ 直白說：所有<strong>沿 $P$ 骨架「進入」$v_i$</strong>的資訊流，都被改道到替身網路內部。
+        </li>
+        <li>
+          <strong>出邊規則（line 9）：</strong>對 $v_i$ 的每條出邊 $\langle v_i, u\rangle$，
+          若它<em>不是</em>自迴圈，<em>且</em>它與其反向都<strong>不</strong>屬於 $P$
+          （$\langle v_i, u\rangle \notin P \wedge \langle u, v_i\rangle \notin P$），
+          就新增一條<em>替身對原始節點</em>的邊 $\langle \mathrm{proxy}(v_i), u\rangle$。
+          <br/>→ 直白說：所有<strong>「離開 $P$ 骨架」的逃逸出邊</strong>，
+          讓替身也能複製一份，通往 $P$ 以外的世界。
+        </li>
+        <li>
+          <strong>刪除入口邊（line 14）：</strong>把 $P$ 的第一條邊 $\langle v, v_1\rangle$ 從原圖移除。
+          這是唯一一條被真正刪掉的原始邊。
+        </li>
+      </ul>
+
+      <div class="clarify">
+        <div class="clarify-head"><span class="mark">i</span>觀念釐清 &middot; 補充說明 &middot; 舉例說明</div>
+        <div class="clarify-body">
+          <span class="tag t-why">這三條規則合起來，為什麼能精準形成「陷阱」？</span>
+          <p>
+            把替身鏈想成一條與 $P$ 平行的「影子軌道」。三條規則協同的效果是：
+          </p>
+          <ul>
+            <li>
+              <strong>入口被改道。</strong>$v_1$ 的入邊 $\langle v_0, v_1\rangle = \langle v, v_1\rangle$ 屬於 $P$，
+              依入邊規則會新增 $\langle \mathrm{proxy}(v_0), \mathrm{proxy}(v_1)\rangle = \langle v, \mathrm{proxy}(v_1)\rangle$
+              （約定 $\mathrm{proxy}(v) = v$）。同時 line 14 刪掉原始 $\langle v, v_1\rangle$。
+              於是從 $v$ 出發、想沿 $P$ 前進的資訊，<em>只能</em>進入替身 $\mathrm{proxy}(v_1)$，回不到原始 $v_1$。
+            </li>
+            <li>
+              <strong>中段被鎖在影子軌道。</strong>替身鏈
+              $\mathrm{proxy}(v_1) \to \mathrm{proxy}(v_2) \to \cdots \to \mathrm{proxy}(v_L)$
+              由入邊規則逐段接起（含逆向折返邊，故影子軌道內可雙向徘徊）。
+            </li>
+            <li>
+              <strong>出口被封死。</strong>關鍵在末端：$v_L$ 通往 $v_t$ 的出邊 $\langle v_L, v_t\rangle$
+              <em>屬於 $P$</em>，因此出邊規則的條件 $\langle v_L, v_t\rangle \notin P$ <strong>不</strong>成立，
+              於是<em>不會</em>新增 $\langle \mathrm{proxy}(v_L), v_t\rangle$。
+              替身鏈走到 $\mathrm{proxy}(v_L)$ 就<strong>斷頭</strong>了——這就是「陷阱」：進得來，出不去。
+            </li>
+          </ul>
+          <p>
+            另一方面，出邊規則只複製「逃逸邊」，所以任何想中途<em>離開 $P$</em>的漫遊
+            （例如走到 $C$ 就拐去 $A$），都能在替身上找到等價的逃逸通道，照常抵達 $v_t$。
+            阻斷與保留，由這三條規則一刀切開。
+          </p>
+
+          <span class="tag t-why">為什麼只刪 $\langle v, v_1\rangle$ 一條邊，而不刪整條 $P$？</span>
+          <p>
+            因為 $v_1, \dots, v_L$ 這些原始節點還要繼續服務<em>其他</em>漫遊
+            （那些不沿 $P$、只是剛好路過這些節點的資訊流）。
+            若把整條 $P$ 的邊都刪掉，就會誤傷這些無辜漫遊，糾纏問題又回來了。
+            所以演算法不刪節點、幾乎不刪邊，而是用「新增替身 + 改道 + 只切一刀入口」
+            的拓樸重組，達成外科手術般的精準。這正是它比傳統 masking 高明之處。
+          </p>
+        </div>
+      </div>
+
+
+      <h3 class="section-title" id="sec-3-3">3.3 Example 2：三類漫遊的命運（Figure 2b）</h3>
+
+      <figure>
+        <div class="fig-frame">
+          <svg viewBox="0 0 520 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Figure 2b rewired graph">
+            <defs>
+              <marker id="arr2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="#9a9a9a"/>
+              </marker>
+              <marker id="arrO" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="#a8693f"/>
+              </marker>
+            </defs>
+            <!-- original nodes: A top-center, B center, E right, C bottom-center, D bottom-right -->
+            <!-- proxies: B' top-left, C' bottom-left (blue) -->
+            <!-- preserved grey edges -->
+            <line x1="210" y1="120" x2="195" y2="78" stroke="#9a9a9a" stroke-width="1.3" marker-end="url(#arr2)"/><!-- B->A -->
+            <line x1="245" y1="125" x2="360" y2="125" stroke="#9a9a9a" stroke-width="1.3" marker-end="url(#arr2)"/><!-- B->E -->
+            <line x1="380" y1="150" x2="345" y2="210" stroke="#9a9a9a" stroke-width="1.3" marker-end="url(#arr2)"/><!-- E->D -->
+            <line x1="225" y1="160" x2="225" y2="205" stroke="#9a9a9a" stroke-width="1.3" marker-end="url(#arr2)"/><!-- B->C -->
+            <!-- orange rewired edges: D->C', C'->B', B'->A escape; also C'->A (proxy escape), proxy out to A -->
+            <line x1="320" y1="225" x2="115" y2="240" stroke="#a8693f" stroke-width="1.7" marker-end="url(#arrO)"/><!-- D -> C' -->
+            <line x1="100" y1="225" x2="80" y2="150" stroke="#a8693f" stroke-width="1.7" marker-end="url(#arrO)"/><!-- C' -> B' -->
+            <line x1="95" y1="235" x2="190" y2="80" stroke="#a8693f" stroke-width="1.5" marker-end="url(#arrO)"/><!-- C' -> A (escape, equiv of D,C,A) -->
+            <line x1="220" y1="222" x2="110" y2="148" stroke="#a8693f" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#arrO)"/><!-- C -> B' faint -->
+            <!-- node boxes: originals -->
+            <g font-family="Noto Serif TC, serif" font-size="13" fill="#1a1a1a">
+              <rect x="176" y="50" width="32" height="32" rx="4" fill="#fff" stroke="#1a1a1a"/><text x="214" y="70">A</text>
+              <rect x="210" y="124" width="32" height="32" rx="4" fill="#fff" stroke="#1a1a1a"/><text x="248" y="144">B</text>
+              <rect x="360" y="110" width="32" height="32" rx="4" fill="#fff" stroke="#1a1a1a"/><text x="398" y="130">E</text>
+              <rect x="210" y="206" width="32" height="32" rx="4" fill="#fff" stroke="#1a1a1a"/><text x="216" y="262">C</text>
+              <rect x="318" y="210" width="32" height="32" rx="4" fill="#fff" stroke="#1a1a1a"/><text x="328" y="262">D</text>
+              <!-- proxies (blue outline) -->
+              <rect x="64" y="118" width="32" height="32" rx="4" fill="#f0f4f9" stroke="#5d7a9e" stroke-width="1.6"/><text x="44" y="138" fill="#5d7a9e">B&#8242;</text>
+              <rect x="84" y="222" width="32" height="32" rx="4" fill="#f0f4f9" stroke="#5d7a9e" stroke-width="1.6"/><text x="62" y="278" fill="#5d7a9e">C&#8242;</text>
+            </g>
+          </svg>
+        </div>
+        <figcaption>Figure 2(b)：重連圖 $G_R^P$。藍框為替身 $B', C'$；橘色為重連的新邊。
+          $\langle D,C\rangle$ 被刪，$D$ 改連到 $C' = \mathrm{proxy}(C)$；替身鏈 $C' \to B'$ 存在，但 $B'$ 無法到達 $A$。</figcaption>
+      </figure>
+
+      <p>對照三條漫遊在重連後的下場（取 $P = \langle D,C,B,A\rangle$）：</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:34%">漫遊</th><th style="width:20%">是否 $\in \mathcal{W}_G^P$</th><th>在 $G_R^P$ 中的命運</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>$W_1 = \langle D,C,B,C,B,A\rangle$</td>
+              <td>是（沿 $P$ 折返）</td>
+              <td>$D$ 出發只能進入 $C'$，接著困在 $\{B', C'\}$ 影子軌道，無法跳回原始節點到達 $A$ → <strong>被阻斷</strong></td>
+            </tr>
+            <tr>
+              <td>$W_2 = \langle E,B,A\rangle$</td>
+              <td>否（不經 $\langle D,C\rangle$）</td>
+              <td>完全不碰被刪的入口邊，原樣保留 → <strong>不受影響</strong></td>
+            </tr>
+            <tr>
+              <td>$W_3 = \langle D,C,A\rangle$</td>
+              <td>否（走捷徑）</td>
+              <td>$C\to A$ 是逃逸邊（非 $P$），依出邊規則有 $\mathrm{proxy}(C)\to A$，
+                故存在等價漫遊 $\langle D, \mathrm{proxy}(C), A\rangle$ → <strong>保留等價路徑</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+
+      <h3 class="section-title" id="sec-3-4">3.4 Definition 6：等價漫遊</h3>
+
+      <div class="callout definition">
+        <span class="callout-label">Definition 6 &middot; Equivalent Walks</span>
+        <p>
+          令 $W = \langle v_1, \dots, v_L\rangle$ 為 $G$ 上的漫遊，$W' = \langle v_1', \dots, v_L'\rangle$ 為 $G_R^P$ 上的漫遊。
+          兩者<em>等價</em>（記為 $W = W'$）當且僅當：
+          (i) 對所有 $i$，$v_i$ 與 $v_i'$ 共享相同的特徵向量與節點型別；
+          (ii) 對所有 $i$，邊 $\langle v_i, v_{i+1}\rangle$ 與 $\langle v_i', v_{i+1}'\rangle$ 共享相同的特徵向量與邊型別。
+        </p>
+      </div>
+
+      <div class="clarify">
+        <div class="clarify-head"><span class="mark">i</span>觀念釐清 &middot; 補充說明 &middot; 舉例說明</div>
+        <div class="clarify-body">
+          <span class="tag t-why">為什麼用「特徵 + 型別相同」來定義等價，而不是「同一個節點」？</span>
+          <p>
+            因為這個等價關係是<strong>站在 HGN 的視角</strong>定義的。
+            回想 1.1 的補充：HGN 計算訊息時，只看節點的特徵向量與邊型別
+            （$W_{\psi(e)} h_u$ 之類）。它根本「分不出」原始節點 $C$ 和它的替身 $C'$——
+            兩者特徵相同、型別相同，餵進網路得到的數值貢獻一模一樣。
+          </p>
+          <p>
+            所以從模型的計算結果來看，漫遊 $\langle D, C, A\rangle$ 與 $\langle D, \mathrm{proxy}(C), A\rangle$
+            是<em>完全等價</em>的兩條資訊流。這正是替身設計的精髓：替身在<strong>拓樸上</strong>是新節點
+            （讓我們能改道、設陷阱），但在<strong>數值上</strong>與原節點無差別（保證不沿 $P$ 的漫遊貢獻不變）。
+            等價漫遊這個定義，就是把「數值無差別」嚴格化，好讓 Theorem 2 能用集合語言陳述。
+          </p>
+        </div>
+      </div>
+
+
+      <h3 class="section-title" id="sec-3-5">3.5 Theorem 2：重連演算法的正確性</h3>
+
+      <p>令 $\mathcal{W}_G^{v_t}$ 為 $G$ 上所有以 $v_t$ 為終點的漫遊集合。</p>
+
+      <div class="callout theorem">
+        <span class="callout-label">Theorem 2 &middot; Correctness</span>
+        <p>
+          對任一細粒度解釋 $(v, P)$，Algorithm 1 產生的重連圖 $G_R^P$ 滿足：
+        </p>
+        <div class="math-display">
+          $$\textbf{(i)}\;\; \mathcal{W}_G^{P} \,\cap\, \mathcal{W}_{G_R^P}^{v_t} = \varnothing; \qquad
+            \textbf{(ii)}\;\; \mathcal{W}_G^{P} \,\cup\, \mathcal{W}_{G_R^P}^{v_t} = \mathcal{W}_G^{v_t}.$$
+        </div>
+      </div>
+
+      <div class="clarify">
+        <div class="clarify-head"><span class="mark">i</span>觀念釐清 &middot; 補充說明 &middot; 舉例說明</div>
+        <div class="clarify-body">
+          <span class="tag t-why">這兩條等式各自在說什麼？</span>
+          <p>
+            兩條等式合起來，正是「精準擾動」的數學定義，可逐字翻譯成白話：
+          </p>
+          <ul>
+            <li>
+              <strong>(i) 全部阻斷。</strong>「與 $P$ 相關聯的漫遊」與「重連圖上仍能到達 $v_t$ 的漫遊」
+              <em>交集為空</em>。意思是：$\mathcal{W}_G^P$ 裡的漫遊，在 $G_R^P$ 上<strong>一條都無法抵達 $v_t$</strong>
+              （它們全被陷阱困住了）。<em>無一漏網。</em>
+            </li>
+            <li>
+              <strong>(ii) 無辜不傷。</strong>「相關聯漫遊」與「重連後仍到達 $v_t$ 的漫遊」<em>聯集等於原圖全部到達 $v_t$ 的漫遊</em>。
+              意思是：原圖中任何<strong>不</strong>屬於 $\mathcal{W}_G^P$、且終於 $v_t$ 的漫遊，
+              在 $G_R^P$ 上都能找到一條等價漫遊照常抵達。<em>無一誤傷。</em>
+            </li>
+          </ul>
+
+          <span class="tag t-intuit">用集合圖來看：一刀切在正確的位置</span>
+          <p>
+            把 $\mathcal{W}_G^{v_t}$（所有終於 $v_t$ 的漫遊）想成一個大圓。
+            Definition 5 在這個大圓裡圈出一塊 $\mathcal{W}_G^P$。
+            Theorem 2 說：重連後仍能到達 $v_t$ 的漫遊集合 $\mathcal{W}_{G_R^P}^{v_t}$，
+            恰好是大圓<em>扣掉</em>那一塊的<strong>補集</strong>——(i) 保證沒切到圈內，(ii) 保證圈外全留。
+            這就是「乾淨地只移除 $\mathcal{W}_G^P$」的嚴格意涵。
+          </p>
+
+          <span class="tag t-why">證明的兩根支柱（直覺版）</span>
+          <p>
+            <strong>支柱一（對應 (i)）：</strong>由 3.2 的陷阱分析——任何沿 $P$ 骨架前進的漫遊，
+            一旦從 $v$ 進入替身 $\mathrm{proxy}(v_1)$，就只能在斷頭的影子軌道內徘徊
+            （末端 $\mathrm{proxy}(v_L)$ 沒有通往 $v_t$ 的出邊）。故它在 $G_R^P$ 上到不了 $v_t$。
+          </p>
+          <p>
+            <strong>支柱二（對應 (ii)）：</strong>由出邊規則——任何不沿 $P$ 的漫遊，
+            其「離開 $P$ 骨架」的那一步都是逃逸邊，而逃逸邊都被複製到了替身上
+            （$\mathrm{proxy}(v_i) \to u$）。再加上 Definition 6 的等價性
+            （替身與原節點對 HGN 數值無差別），於是這條漫遊在 $G_R^P$ 上有一條等價分身照常到達 $v_t$。
+          </p>
+          <p>
+            兩根支柱合起來，就證成了「恰好阻斷 $\mathcal{W}_G^P$、其餘不變」。
+            這也是為什麼 xPath 的擾動比傳統 masking 更接近因果推論裡的
+            <em>精準干預（targeted intervention）</em>——它不是粗暴地拿掉一個實體，
+            而是外科手術式地只截斷一束特定語意的資訊流。
+          </p>
+        </div>
+      </div>
+
+      <div class="divider-ornament">&sect; &sect; &sect;</div>
+    </section>
+
+    <!-- ============================================== -->
+    <!-- CHAPTER 4 -->
+    <!-- ============================================== -->
+    <section class="chapter" id="ch4">
+      <div class="chapter-header">
+        <div class="chapter-number">Chapter Four</div>
+        <h2 class="chapter-title">影響力分數與貪婪搜尋</h2>
+        <p class="chapter-summary">
+          有了「乾淨擾動」的工具，剩下兩件事：把「擾動造成的變化」量化成一個分數（Definition 7），
+          以及在指數大的路徑空間中高效率地找出 Top-$K$（Algorithm 2）。
+          本章也補上第一章承諾過的影響力分數定義。
+        </p>
+      </div>
+
+      <h3 class="section-title" id="sec-4-1">4.1 Definition 7：影響力分數</h3>
+
+      <p class="lead">
+        給定 $(v, P)$，我們用 Algorithm 1 得到 $G_R^P$，再分別查詢模型在原圖與重連圖上的輸出，
+        定義原圖與重連圖的預測標籤：
+      </p>
+      <div class="math-display">
+        $$y = \arg\max_{c} M_G(v_t)[c], \qquad y' = \arg\max_{c} M_{G_R^P}(v_t)[c].$$
+      </div>
+
+      <div class="callout definition">
+        <span class="callout-label">Definition 7 &middot; Influence Score</span>
+        <div class="math-display">
+          $$\mathrm{IF}(X_G^P) = (-1)^{\mathbf{1}_{y=y'}} + \bigl( M_G(v_t)[y] - M_{G_R^P}(v_t)[y] \bigr),$$
+        </div>
+        <p>
+          其中 $\mathbf{1}_{y=y'}$ 是指示函數（$y = y'$ 時為 $1$，否則為 $0$），
+          $M_G(v_t)[y]$ 是原模型給標籤 $y$ 的機率。
+        </p>
+      </div>
+
+      <p>分數由兩項相加組成，分別捕捉「離散」與「連續」兩種變化：</p>
+      <ul>
+        <li>
+          <strong>第一項 $(-1)^{\mathbf{1}_{y=y'}}$（標籤是否翻轉）：</strong>
+          標籤不變時 $\mathbf{1}_{y=y'} = 1$，此項 $= -1$；標籤翻轉時 $\mathbf{1}_{y=y'} = 0$，此項 $= +1$。
+        </li>
+        <li>
+          <strong>第二項 $M_G(v_t)[y] - M_{G_R^P}(v_t)[y]$（原標籤機率的下降）：</strong>
+          正值表示阻斷 $\mathcal{W}_G^P$ 後、原標籤機率<em>下降</em>，即這條路徑確實在<em>支持</em>原預測。
+        </li>
+      </ul>
+
+      <div class="clarify">
+        <div class="clarify-head"><span class="mark">i</span>觀念釐清 &middot; 補充說明 &middot; 舉例說明</div>
+        <div class="clarify-body">
+          <span class="tag t-why">$(-1)^{\mathbf{1}_{y=y'}}$ 這個寫法到底在做什麼？</span>
+          <p>
+            這是一個把布林值編碼成 $\pm 1$ 的小技巧。它的<strong>真正目的</strong>是製造一道「層級鴻溝」：
+            讓「能翻轉標籤」的解釋，分數永遠高於「不能翻轉標籤」的解釋。
+            因為翻轉標籤是比「只動了一點機率」更強的因果證據——
+            它直接證明了這束資訊流對最終決策有<em>決定性</em>影響。
+          </p>
+
+          <span class="tag t-why">值域分析：為什麼是 $[-2,0]$ 與 $[0,2]$ 兩段？</span>
+          <p>
+            兩項機率都落在 $[0,1]$，故第二項 $M_G[y] - M_{G_R}[y] \in [-1, 1]$。分兩種情況：
+          </p>
+          <div class="math-display">
+            $$
+            \mathrm{IF}(X_G^P) =
+            \begin{cases}
+              -1 + \bigl(M_G[y] - M_{G_R}[y]\bigr) \in [-2,\,0], & \text{若 } y = y' \text{（標籤不變）};\\[6pt]
+              +1 + \bigl(M_G[y] - M_{G_R}[y]\bigr) \in [\,0,\,2], & \text{若 } y \neq y' \text{（標籤翻轉）}.
+            \end{cases}
+            $$
+          </div>
+          <p>
+            兩段恰好以 $0$ 為界、無縫銜接：任何「翻轉標籤」的解釋（$\ge 0$）都不低於任何
+            「不翻轉」的解釋（$\le 0$）。這就是上面說的「層級鴻溝」在數字上的體現——
+            第一項先按「能否翻轉」把解釋粗分兩等，第二項再在每一等內用機率變化做細排序。
+            這是一個「字典序（lexicographic）」風格的評分設計。
+          </p>
+
+          <span class="tag t-example">舉例：三種典型分數的解讀</span>
+          <p>
+            設原本 $M_G(v_t)[y] = 0.9$：
+          </p>
+          <ul>
+            <li>
+              阻斷後標籤翻轉、$M_{G_R}[y] = 0.2$ → $\mathrm{IF} = 1 + (0.9 - 0.2) = 1.7$。
+              <em>強力支持原預測的關鍵路徑。</em>（對應案例研究中 $1.04$ 那條。）
+            </li>
+            <li>
+              阻斷後標籤不變、$M_{G_R}[y] = 0.85$ → $\mathrm{IF} = -1 + (0.9 - 0.85) = -0.95$。
+              <em>有點作用但不關鍵。</em>
+            </li>
+            <li>
+              阻斷後標籤不變、$M_{G_R}[y] = 0.97$ → $\mathrm{IF} = -1 + (0.9 - 0.97) = -1.07 < -1$。
+              <em>阻斷反而讓原標籤更確信——這條路徑其實在「拖後腿」。</em>
+            </li>
+          </ul>
+
+          <span class="tag t-why">為什麼 $\mathrm{IF} < -1$ 的解釋被判定「無效」？</span>
+          <p>
+            $\mathrm{IF} < -1$ 只可能發生在「標籤不變（第一項 $-1$）且第二項 $< 0$」的情形，
+            也就是 $M_{G_R}[y] > M_G[y]$：<strong>把這束資訊流切掉後，模型對原答案反而更有信心</strong>。
+            這代表該路徑攜帶的是<em>與正確預測相反</em>的雜訊（負面證據），
+            它非但不是「支持原預測的原因」，反而是干擾。
+            把這類解釋當成「重要原因」會誤導使用者，所以論文把 $\mathrm{IF} < -1$ 標記為無效。
+          </p>
+        </div>
+      </div>
+
+
+      <h3 class="section-title" id="sec-4-2">4.2 Algorithm 2：Top-$K$ 貪婪搜尋</h3>
+
+      <p>
+        第二個難關是組合爆炸：以 $v_t$ 為終點的簡單路徑數量約為 $O(d^L)$
+        （$d$ 為平均分支度、$L$ 為長度），無法枚舉。
+        論文採用一個<em>廣度優先 + Beam Search</em>風格的貪婪策略，逐層只保留最有潛力的少數路徑。
+      </p>
+
+      <div class="algo">
+        <div class="algo-title">Algorithm 2 &middot; Finding top-$K$ fine-grained explanations</div>
+        <div class="algo-input"><strong>Input:</strong> $v_t$, $M_G$, 最大迭代 $L_{\max}$, 取樣數 $m$, 候選池大小 $b$</div>
+        <ol class="algo-lines">
+          <li>$B \leftarrow \{\langle v_t\rangle\}$; &nbsp; $U \leftarrow \varnothing$; &nbsp; $i \leftarrow 0$</li>
+          <li><span class="kw">while</span> $B \neq U$ <span class="kw">and</span> $i < L_{\max}$ <span class="kw">do</span></li>
+          <li class="ind1">$B \leftarrow U$; &nbsp; $U \leftarrow \varnothing$; &nbsp; $i \leftarrow i + 1$</li>
+          <li class="ind1"><span class="kw">for</span> $P \in B$ <span class="kw">and</span> $|P| = i$ <span class="kw">do</span></li>
+          <li class="ind2">從 $P$ 隨機取樣 $m$ 條「往前延伸一步」的路徑，加入 $U$</li>
+          <li class="ind1"><span class="kw">end for</span></li>
+          <li class="ind1">$U \leftarrow B \cup U$ 中影響力分數最高的 $b$ 條路徑</li>
+          <li><span class="kw">end while</span></li>
+          <li><span class="kw">return</span> 基於 $B$ 的 top-$K$ 細粒度解釋</li>
+        </ol>
+      </div>
+
+      <p>核心流程：</p>
+      <ol>
+        <li>候選池 $B$ 初始化為長度 $0$ 的 trivial path $\langle v_t\rangle$（僅作搜尋起點，不算真正的解釋）。</li>
+        <li>第 $i$ 次迭代：對 $B$ 中每條長度為 $i$ 的路徑，隨機向<em>上游</em>延伸一步 $m$ 次，得到 $m$ 條長度 $i+1$ 的新路徑，收進 $U$。</li>
+        <li>從 $B \cup U$ 中挑出影響力分數最高的至多 $b$ 條，更新 $B$。</li>
+        <li>直到 $B$ 中所有路徑都被延伸過、或達到 $L_{\max}$（通常設為模型層數）。最後把 $K$ 條最高分路徑<em>反轉</em>，使每條的起點成為原因節點 $v$。</li>
+      </ol>
+
+      <div class="clarify">
+        <div class="clarify-head"><span class="mark">i</span>觀念釐清 &middot; 補充說明 &middot; 舉例說明</div>
+        <div class="clarify-body">
+          <span class="tag t-intuit">直覺：這就是 Beam Search</span>
+          <p>
+            若你學過機器翻譯或語言模型解碼，這個演算法的骨架你已經很熟——它就是
+            <strong>Beam Search（束搜尋）</strong>：維持一束（beam，這裡大小為 $b$）最有希望的部分解，
+            每步往外擴展、評分、剪枝到只剩 $b$ 條，再進入下一步。
+            差別只在於「評分函數」是 Definition 7 的影響力分數，「擴展」是沿圖的邊向上游延伸一步。
+          </p>
+
+          <span class="tag t-why">為什麼是「向上游、最後反轉」而不是直接從 $v$ 出發？</span>
+          <p>
+            因為我們事先<em>不知道</em>原因節點 $v$ 是誰——那正是要找的東西。
+            已知的只有目標 $v_t$。所以演算法從 $v_t$ 出發，沿著入邊一路往「資訊來源」回溯，
+            每延伸一步就多納入一個可能的上游節點。等找到高分路徑後再整條反轉，
+            起點自然就是原因節點。這是「從結果回推原因」的自然方向。
+          </p>
+
+          <span class="tag t-why">$m$ 與 $b$ 各自控制什麼？貪婪的代價是什麼？</span>
+          <p>
+            $m$ 控制<em>每條路徑的探索寬度</em>（隨機採幾條延伸），$b$ 控制<em>整體保留的候選數</em>（beam 寬）。
+            兩者越大、搜尋越接近窮舉、也越慢。代價是：貪婪 + 隨機採樣<strong>不保證找到全域最優</strong>的 Top-$K$。
+            這在第五章的 ACM+HGT 案例會現形——當某類高度數路徑（paper-subject-paper）大量佔據高分位，
+            beam 可能把另一類語意（author 路徑）整個擠出去。這是效率與最優性之間的典型取捨。
+          </p>
+        </div>
+      </div>
+
+
+      <h3 class="section-title" id="sec-4-3">4.3 時間複雜度分析</h3>
+
+      <p>把各部件的成本組起來：</p>
+      <ul>
+        <li>Algorithm 2 最多計算 $b \cdot m \cdot L_{\max}$ 個解釋的影響力分數。</li>
+        <li>單次圖重連：$O(pd)$（$p$ 為路徑最大長度、$d$ 為最大節點度）。</li>
+        <li>單次模型推論：$O(|M_G|)$（$|M_G|$ 為模型參數量）。</li>
+      </ul>
+      <div class="math-display">
+        $$\text{總時間} = O\bigl(b \cdot m \cdot L_{\max} \cdot (pd + |M_G|)\bigr).$$
+      </div>
+      <p>
+        實務上 $b, m, L_{\max}, p$ 皆為小常數，且 $p \le L_{\max}$。
+        因此<strong>總時間與模型推論時間呈線性關係</strong>——這正是 xPath 在第五章效率表上
+        把對手甩開一兩個數量級的根本原因。
+      </p>
+
+      <div class="divider-ornament">&sect; &sect; &sect;</div>
+    </section>
+
+    <!-- ============================================== -->
+    <!-- CHAPTER 5 -->
+    <!-- ============================================== -->
+    <section class="chapter" id="ch5">
+      <div class="chapter-header">
+        <div class="chapter-number">Chapter Five</div>
+        <h2 class="chapter-title">實驗評估</h2>
+        <p class="chapter-summary">
+          理論再漂亮，也要用實證檢驗。本章看 xPath 在三個真實異質圖、三種 HGN 上的表現，
+          並仔細釐清「保真度」這個評估指標的意涵——以及為什麼這個指標其實對 xPath 並不公平。
+        </p>
+      </div>
+
+      <h3 class="section-title" id="sec-5-1">5.1 設定與基線</h3>
+
+      <p>三個公開異質圖資料集，皆為節點分類任務：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>資料集</th><th>節點型別</th><th class="num">#節點</th><th class="num">#邊</th><th>任務</th></tr></thead>
+          <tbody>
+            <tr><td>ACM</td><td>Paper / Author / Subject</td><td class="num">11,246</td><td class="num">46,098</td><td>論文分三類主題</td></tr>
+            <tr><td>DBLP</td><td>Author / Paper / Conf. / Term</td><td class="num">26,128</td><td class="num">265,694</td><td>作者分四個研究領域</td></tr>
+            <tr><td>IMDB</td><td>Movie / Director / Actor</td><td class="num">11,616</td><td class="num">45,828</td><td>電影分類</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        受測 HGN 為 <strong>SIM2</strong>（2 層 SimpleHGN）、<strong>SIM3</strong>（3 層 SimpleHGN）、
+        <strong>HGT</strong>（2 層 Heterogeneous Graph Transformer），嵌入維度皆 32。
+        對照解釋方法涵蓋兩個基本方法與四個改編自 GNN 的 SOTA 方法：
+      </p>
+      <ul>
+        <li><strong>Local</strong>：純結構、選最近節點（任務無關）。</li>
+        <li><strong>Attention</strong>：用 HGN 自身的注意力分數（model-specific 強基線）。</li>
+        <li><strong>PGM-Explainer</strong>：擾動節點特徵、建局部分布、產生 PGM。</li>
+        <li><strong>ReFine / GEM</strong>：學習式的<em>邊級別</em>解釋器。</li>
+        <li><strong>SubgraphX</strong>：以 Monte Carlo Tree Search 找<em>子圖</em>，用 Shapley value 評分。</li>
+      </ul>
+
+
+      <h3 class="section-title" id="sec-5-2">5.2 保真度指標與公平性聲明</h3>
+
+      <p>由於沒有 ground-truth 解釋，沿用標準的兩個<em>保真度（fidelity）</em>指標。令 $\mathcal{T}$ 為模型正確分類的測試樣本集，$\tilde{G}$ 為由解釋的圖物件誘導出的子圖：</p>
+      <div class="math-display">
+        $$F^{acc} = \frac{1}{|\mathcal{T}|}\sum_{(v_t,y)\in\mathcal{T}} \bigl(1 - \mathbf{1}_{y=\tilde{y}}\bigr), \qquad
+          F^{prob} = \frac{1}{|\mathcal{T}|}\sum_{(v_t,y)\in\mathcal{T}} \bigl(M_G(v_t)[y] - M_{\tilde{G}}(v_t)[y]\bigr).$$
+      </div>
+
+      <div class="clarify">
+        <div class="clarify-head"><span class="mark">i</span>觀念釐清 &middot; 補充說明 &middot; 舉例說明</div>
+        <div class="clarify-body">
+          <span class="tag t-why">為什麼這兩個指標是「越低越好」？</span>
+          <p>
+            這兩個指標衡量的是「<strong>只留下解釋的圖物件</strong>（誘導子圖 $\tilde{G}$），模型還能不能復現原本的預測」。
+            一個忠實（faithful）的解釋，應該已經包含了預測所需的<em>充分且必要</em>資訊，
+            所以只用 $\tilde{G}$ 重跑模型時，<strong>標籤不該變、機率不該掉</strong>。
+            於是 $F^{acc}$（標籤改變的比例）與 $F^{prob}$（原標籤機率的下降量）都是越低越忠實。
+            這與「擾動式重要性」的方向相反，初學者很容易看反，要特別留意。
+          </p>
+
+          <span class="tag t-intuit">為什麼 xPath 會出現「負的 $F^{prob}$」？這是好事</span>
+          <p>
+            負的 $F^{prob}$ 表示 $M_{\tilde{G}}[y] > M_G[y]$：只留下解釋子圖後，
+            模型對正確標籤<em>反而更有信心</em>。這代表 xPath 不只找到了關鍵資訊，
+            還順手<strong>濾掉了原圖中的雜訊</strong>——剩下的全是支持正確預測的乾淨證據。
+            這與 4.1 中「$\mathrm{IF}$ 懲罰拖後腿路徑」的設計一脈相承：影響力分數本來就在篩掉負面證據。
+          </p>
+
+          <span class="tag t-why">作者為何說「這個指標對 xPath 不公平」？</span>
+          <p>
+            這是全章最重要的方法論自省。xPath 的設計本意，是評估
+            「<em>某節點沿某一條路徑</em>的影響力」——它的擾動（圖重連）只攔截
+            <strong>與該路徑相關聯的漫遊</strong>，並不把路徑當成一塊要整個保留的子圖。
+            但保真度指標卻是把 Top-$K$ 條路徑<em>當成一個子圖</em>來誘導 $\tilde{G}$ 並評估。
+            這等於用「子圖解釋」的尺，去量一個「路徑影響力」的方法——
+            兩者的擾動語意根本不同。作者明知此指標對自己不利，仍採用它以求與既有方法公平比較，
+            這份誠實在論文寫作上值得肯定。
+          </p>
+        </div>
+      </div>
+
+
+      <h3 class="section-title" id="sec-5-3">5.3 結果分析（Table 2 摘要）</h3>
+
+      <p>下表摘錄 $F^{acc}$ 的部分代表性數字（單位 %，越低越好；粗體為最佳）：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>資料集 / 模型</th><th class="num">PGM-Exp.</th><th class="num">ReFine</th><th class="num">GEM</th><th class="num">SubgraphX</th><th class="num">xPath</th></tr></thead>
+          <tbody>
+            <tr><td>ACM / SIM2</td><td class="num">18.1</td><td class="num">17.2</td><td class="num">4.2</td><td class="num">3.8</td><td class="num"><strong>0.2</strong></td></tr>
+            <tr><td>DBLP / SIM3</td><td class="num">31.9</td><td class="num">14.5</td><td class="num">32.1</td><td class="num">5.9</td><td class="num"><strong>0.3</strong></td></tr>
+            <tr><td>IMDB / SIM2</td><td class="num">6.0</td><td class="num">13.4</td><td class="num">18.8</td><td class="num">2.4</td><td class="num"><strong>0.9</strong></td></tr>
+            <tr><td>ACM / HGT</td><td class="num">46.7</td><td class="num">4.2</td><td class="num">1.9</td><td class="num">1.4</td><td class="num">5.5</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>幾個關鍵觀察：</p>
+      <ol>
+        <li><strong>xPath 在絕大多數情境取得最低保真度</strong>，且多數達 t-test 統計顯著（$p < 0.01$）。</li>
+        <li><strong>部分情境出現負 $F^{prob}$</strong>：如上所述，這顯示其過濾雜訊、鎖定關鍵資訊流的能力。</li>
+        <li>
+          <strong>唯一明顯例外：ACM + HGT</strong>（表中 $5.5$ 遜於對手）。作者深入分析發現：
+          ACM 中 Subject 節點度數遠大於 Author，使得 paper-subject-paper 路徑主導了所有以目標 paper 為終點的路徑，
+          佔滿 Top-$K$，導致解釋裡缺少 author 型別資訊。作者展示一個簡單擴展
+          （強制保留一條最高分的 author 路徑），即可把結果壓到 $F^{acc}=0.0\%$、$F^{prob}=-2.0\%$，反超 Attention。
+          這正呼應 4.2 提到的「貪婪 + 高度數路徑壓制」現象，也說明 xPath 具備擴展空間。
+        </li>
+        <li><strong>SubgraphX 是對照組中最強的</strong>，印證「高階子圖比節點 / 邊更具表達力」。而 GEM、ReFine 這類<em>邊級別</em>方法普遍不佳，顯示單看邊難以承載 HGN 的豐富語意。</li>
+      </ol>
+
+
+      <h3 class="section-title" id="sec-5-4">5.4 影響力分數的有效性（Figure 3）</h3>
+
+      <p>
+        為驗證 Definition 7 真的能區分忠實與不忠實的解釋，作者另取搜尋過程中<em>影響力最低</em>的 $K$ 條路徑，
+        誘導出對照子圖 $\tilde{G}_{\text{low}}$，與 Top-$K$ 誘導的 $\tilde{G}$ 比較保真度。
+        結果在所有設定下 $\tilde{G}_{\text{low}}$ 的保真度都顯著較差——
+        兩組之間的明顯落差，正是影響力分數函數具備區分能力的直接證據。
+      </p>
+
+
+      <h3 class="section-title" id="sec-5-5">5.5 效率與案例研究</h3>
+
+      <h4 class="sub-section-title">效率（Table 3，計算所有測試樣本解釋的時間，小時）</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>資料集 / 模型</th><th class="num">PGM-Exp.</th><th class="num">ReFine</th><th class="num">GEM</th><th class="num">SubgraphX</th><th class="num">xPath</th></tr></thead>
+          <tbody>
+            <tr><td>ACM / SIM2</td><td class="num">19.6</td><td class="num">4.6</td><td class="num">2.6</td><td class="num">3.5</td><td class="num"><strong>0.2</strong></td></tr>
+            <tr><td>DBLP / SIM3</td><td class="num">46.0</td><td class="num">11.0</td><td class="num">84.5</td><td class="num">27.9</td><td class="num"><strong>1.2</strong></td></tr>
+            <tr><td>IMDB / HGT</td><td class="num">5.5</td><td class="num">3.5</td><td class="num">3.0</td><td class="num">5.2</td><td class="num"><strong>0.1</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        xPath 在所有設定下都快上一到兩個數量級。對手的 Monte Carlo 搜尋（SubgraphX）與採樣式擾動（PGM-Explainer）
+        在大鄰域（如 SIM3 on DBLP）時成本爆炸；GEM 因要計算鄰域內成對節點的邊機率也吃癟。
+        xPath 的線性複雜度（4.3）在此兌現。
+      </p>
+
+      <h4 class="sub-section-title">案例研究（Figure 4）：xPath 如何同時回答 What 與 How</h4>
+      <div class="callout example">
+        <span class="callout-label">Case (a) &middot; ACM 上預測 paper-2177</span>
+        <p>
+          xPath 找出兩條最具影響力的路徑：
+          $\langle \text{paper-3953}, \text{author-1971}, \text{paper-2177}\rangle$（$\mathrm{IF} = 1.04$）與
+          $\langle \text{paper-3953}, \text{subject-36}, \text{paper-2177}\rangle$（$\mathrm{IF} = -1.00$）。
+          語意清晰：模型主要因為「兩篇論文出自<strong>同一作者</strong>」做出預測，
+          而「同一主題」這條路徑反而是負面證據（負分）。
+        </p>
+      </div>
+      <div class="callout example">
+        <span class="callout-label">Case (b) &middot; DBLP 上預測 author-1208</span>
+        <p>
+          找出兩個原因節點 conference-15 與 term-185，各自的最具影響力路徑為
+          $\langle \text{conference-15}, \text{paper-9926}, \text{author-1208}\rangle$ 與
+          $\langle \text{term-185}, \text{paper-6207}, \text{author-1208}\rangle$。
+          解讀：模型認為該作者的領域歸屬，建立在「他在 conference-15 發表了 paper-9926」與
+          「他發表了涉及 term-185 的 paper-6207」這<strong>兩條語意完全不同</strong>的證據上。
+          這正是 What（哪些節點）＋ How（沿哪條語意路徑）的合一。
+        </p>
+      </div>
+
+      <div class="divider-ornament">&sect; &sect; &sect;</div>
+    </section>
+
+    <!-- ============================================== -->
+    <!-- CHAPTER 6 -->
+    <!-- ============================================== -->
+    <section class="chapter" id="ch6">
+      <div class="chapter-header">
+        <div class="chapter-number">Chapter Six</div>
+        <h2 class="chapter-title">理論評析與結語</h2>
+        <p class="chapter-summary">
+          走完全文，我們從圖論與 GNN 理論的高度回望 xPath：它好在哪、它的數學品味為何、又留下什麼空間。
+        </p>
+      </div>
+
+      <h3 class="section-title">6.1 貢獻彙整</h3>
+      <ol>
+        <li><strong>概念創新：</strong>提出 $(v, P)$ 形式的細粒度解釋，把解釋粒度從節點 / 邊 / 子圖，推進到介於其間的「路徑」，首次將 <em>How</em> 維度納入 GNN 解釋。</li>
+        <li><strong>演算法創新：</strong>圖重連機制，透過替身節點精準阻斷 $\mathcal{W}_G^P$，並以 Theorem 1（解耦）、Theorem 2（正確性）給出形式化保證。</li>
+        <li><strong>效率設計：</strong>Beam-search 風格貪婪搜尋，時間與模型推論線性相關，實測快對手一兩個數量級。</li>
+        <li><strong>黑盒友善：</strong>僅需查詢輸入到輸出，適用機密 / 商業部署。作者並宣稱這是首個針對黑盒 HGN 的解釋方法。</li>
+      </ol>
+
+      <h3 class="section-title">6.2 理論品味</h3>
+      <p>從圖論與代數的眼光看，這篇論文最值得稱道的有三點：</p>
+      <ul>
+        <li>
+          <strong>物理對應的嚴謹性。</strong>它正確地辨認出 GNN 訊息傳遞的真實載體是<em>漫遊</em>而非簡單路徑
+          （回想 $A^L$ 計數漫遊的代數事實），並用 Definition 5 的三條件把「與路徑對應的漫遊」刻畫到滴水不漏。
+          這種「先把要擾動的對象定義清楚，再去設計擾動」的順序，是理論工作的正確姿態。
+        </li>
+        <li>
+          <strong>擾動工具的精緻性。</strong>圖重連本質上是一台「資訊流隔離手術刀」——
+          它不刪節點、幾乎不刪邊，而是用拓樸重組（替身 + 改道 + 一刀切入口）達成語意層級的精準干預。
+          這比傳統 masking 更接近因果推論中的 $\mathrm{do}(\cdot)$ 操作，是方法論上的躍升。
+        </li>
+        <li>
+          <strong>保證的完備性。</strong>Theorem 1 管「可區分」、Theorem 2 管「不誤傷」，
+          兩條定理一前一後把整套擾動的正當性鎖死。少了任何一條，影響力分數的語意都會崩塌。
+        </li>
+      </ul>
+
+      <h3 class="section-title">6.3 侷限與未來方向</h3>
+      <ul>
+        <li><strong>影響力分數的取捨。</strong>$(-1)^{\mathbf{1}_{y=y'}}$ 的字典序設計偏重「標籤是否翻轉」，對機率的細微變化相對不敏感（這也是 DBLP 上 $F^{prob}$ 略遜 SubgraphX 的原因）。在需要精細機率歸因的場景或許不夠細。</li>
+        <li><strong>貪婪無最優保證。</strong>ACM+HGT 的高度數路徑壓制現象，暴露了 beam search 在型別分布極不均時可能漏掉某類語意。作者的擴展實驗指出了「探索解釋間相關性」的改進方向。</li>
+        <li><strong>單路徑的表達上限。</strong>每個解釋仍是一條路徑，無法刻畫「多條路徑<em>聯合</em>作用」的高階語意（例如必須兩條證據同時存在才翻轉預測）。把細粒度解釋從「路徑」推廣到「路徑集合 / 路徑代數」，或許是後續最有理論潛力的一步。</li>
+      </ul>
+
+      <blockquote>
+        xPath 真正的貢獻，不在於某個漂亮的數字，而在於它替整個領域補上了一塊缺失的維度：
+        從「什麼重要」走到「資訊如何流動」。當它把擾動的對象從靜態實體換成動態漫遊集，
+        並用兩條定理鎖住正確性，它其實是在說——<em>解釋一個圖模型，應該解釋它的計算過程，而不只是它的輸入。</em>
+      </blockquote>
+    </section>
+
+    <!-- ============================================== -->
+    <!-- APPENDIX -->
+    <!-- ============================================== -->
+    <section class="chapter" id="appendix">
+      <div class="chapter-header">
+        <div class="chapter-number">Appendix</div>
+        <h2 class="chapter-title">符號速查</h2>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:32%">符號</th><th>意義</th></tr></thead>
+          <tbody>
+            <tr><td>$G = (V, E, \phi, \psi)$</td><td>異質圖（節點、有向邊、節點型別函數、邊型別函數）</td></tr>
+            <tr><td>$T,\; S$</td><td>節點型別集、邊型別集（$|T|+|S|>2$）</td></tr>
+            <tr><td>$M_G$</td><td>黑盒異質圖神經網路；$M_G(v_t)$ 為類別機率分布</td></tr>
+            <tr><td>$v_t,\; v$</td><td>目標節點、原因節點</td></tr>
+            <tr><td>$X_G(v_t) = (v, P)$</td><td>細粒度解釋（原因節點 ＋ 簡單路徑）</td></tr>
+            <tr><td>$\mathcal{P}_G(v_t),\; \mathcal{X}_G(v_t)$</td><td>以 $v_t$ 為終點的全體簡單路徑、全體細粒度解釋</td></tr>
+            <tr><td>$W_G$</td><td>漫遊（可含自迴圈與重複節點）</td></tr>
+            <tr><td>$\mathcal{W}_G^P$</td><td>與簡單路徑 $P$ 相關聯的漫遊集（Definition 5）</td></tr>
+            <tr><td>$\mathcal{W}_G^{v_t}$</td><td>$G$ 上所有以 $v_t$ 為終點的漫遊集</td></tr>
+            <tr><td>$\mathrm{proxy}(v_i),\; G_R^P$</td><td>路徑內節點的替身、針對 $P$ 重連後的圖</td></tr>
+            <tr><td>$\mathrm{IF}(X_G^P)$</td><td>細粒度解釋的影響力分數（Definition 7）</td></tr>
+            <tr><td>$y,\; y'$</td><td>原圖、重連圖上的預測標籤（$\arg\max$）</td></tr>
+            <tr><td>$L_{\max},\; b,\; m$</td><td>搜尋的最大迭代、候選池（beam）大小、每步取樣數</td></tr>
+            <tr><td>$F^{acc},\; F^{prob}$</td><td>準確度保真度、機率保真度（皆越低越忠實）</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="colophon">
+      <div class="colophon-label">Colophon</div>
+      <p>
+        本份講義為 AAAI&nbsp;2023 論文
+        <em>Towards Fine-Grained Explainability for Heterogeneous Graph Neural Network</em>（xPath）
+        的正文精讀，銜接先備知識講義《通往 xPath 之路》。內容依論文脈絡組織，
+        於艱深理論處（Definition 5、Theorem 1／2、Definition 7 等）追加「觀念釐清／補充說明／舉例說明」區段，
+        並補充漫遊計數的代數背景與因果干預的方法論視角。所有數學式以 MathJax 排版，正文字體採思源宋體。
+      </p>
+    </footer>
+
+  </main>
+</div>
+</body>
+</html>
